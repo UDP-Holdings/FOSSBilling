@@ -26,9 +26,11 @@
                                 {% if item.quantity > 1 %}
                                     x {{ item.quantity }}
                                 {% endif %}
-
                                 {% if item.period %}
                                     ({{ item.period | period_title }})
+                                {% endif %}
+                                {% if item.subdomain %}
+                                    <br><small class="text-muted">{{ item.subdomain }}.{{ item.domain }}</small>
                                 {% endif %}
                             </td>
                             <td>
@@ -210,18 +212,31 @@
 </div>
 
 <script type="text/javascript">
-    $('.remove-cart-item').on('click', function(e) {
-        e.preventDefault();
+    document.querySelectorAll('a.api-link[data-api-reload]').forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            fetch(link.href, { headers: { 'Accept': 'application/json' } })
+                .then(function(r) { return r.json(); })
+                .then(function(response) {
+                    if (response.error) {
+                        FOSSBilling.message(response.error.message || 'An error occurred.', 'error');
+                        return;
+                    }
+                    location.reload();
+                })
+                .catch(function() {
+                    FOSSBilling.message('Request failed. Please try again.', 'error');
+                });
+        });
+    });
 
-        var btn = $(this);
-
-        if (confirm("{{ 'Are you sure you want to remove this item from cart?'|trans }}")) {
-            var item_id = $(btn).attr('data-cart-item-id');
-
-            bb.post("guest/cart/remove_item", { id: item_id, CSRFToken: "{{ CSRFToken }}" }, function(r) {
-                FOSSBilling.message("{{ 'Item was removed from cart'|trans }}");
-                location.reload(false);
+    document.querySelectorAll('.remove-cart-item').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            var item_id = btn.getAttribute('data-cart-item-id');
+            API.guest.post("cart/remove_item", { id: item_id, CSRFToken: "{{ CSRFToken }}" }, function(r) {
+                window.location.href = '{{ "order"|link }}?open=products';
             });
-        }
+        });
     });
 </script>

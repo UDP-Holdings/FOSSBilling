@@ -73,7 +73,7 @@ FormData.prototype.serializeJSON = function () {
 }
 
 
-const Tools = {
+var Tools = {
     /**
      * Get the full URL from a relative URL to the API
      * @param {string} url The endpoint to call. Might be a relative URL or a full URL. If it's a relative URL, it will be appended to the base URL.
@@ -114,7 +114,7 @@ const Tools = {
   * FOSSBilling API wrapper for JavaScript
   * @documentation https://fossbilling.org/docs/api/javascript
   */
-const API = {
+var API = {
     /**
      * Wrapper for the admin API
      * @documentation https://fossbilling.org/docs/api/javascript
@@ -284,5 +284,58 @@ const API = {
                     successHandler(response.result);
                 }
             })
+    },
+
+    /**
+     * Wire up legacy api-form submissions.
+     *
+     * Intercepts submit on any <form class="api-form" data-api-jsonp="callbackName">
+     * element, posts the form data via fetch to the form's action URL, and calls
+     * the named global callback with the result on success.
+     *
+     * This supports the order flow templates (mod_orderbutton_client.html.twig etc.)
+     * which use the older FOSSBilling form convention alongside the newer data-fb-api
+     * convention handled separately in the theme JS.
+     */
+    _apiForm: function () {
+        document.querySelectorAll('form.api-form').forEach(function (form) {
+            if (form.dataset.apiFormBound) return;
+            form.dataset.apiFormBound = '1';
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+
+                const callbackName = form.getAttribute('data-api-jsonp');
+                const formData    = new FormData(form);
+                const params      = formData.serializeObject();
+                const action      = form.getAttribute('action');
+
+                fetch(action, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify(params),
+                })
+                .then(r => r.json())
+                .then(function (response) {
+                    if (response.error) {
+                        FOSSBilling.message(response.error.message || 'An error occurred.', 'error');
+                        return;
+                    }
+                    if (callbackName && typeof window[callbackName] === 'function') {
+                        window[callbackName](response.result);
+                    } else {
+                        const msg    = form.getAttribute('data-api-msg');
+                        const reload = form.getAttribute('data-api-reload');
+                        if (msg) FOSSBilling.message(msg);
+                        if (reload) location.reload();
+                    }
+                })
+                .catch(function () {
+                    FOSSBilling.message('Request failed. Please try again.', 'error');
+                });
+            });
+        });
     },
 };

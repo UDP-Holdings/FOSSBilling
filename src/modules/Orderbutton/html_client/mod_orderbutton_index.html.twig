@@ -59,85 +59,170 @@
 {% endblock %}
 {% block js %}
 <script>
-    $(function () {
-        $('.accordion-body').on('shown', function () {
-            $('#popup-iframe').height($('body').height());
+    // Clear all cart items, then run callback.
+    function _clearCartThen(callback) {
+        var buttons = document.querySelectorAll('.remove-cart-item');
+        if (!buttons.length) { callback(); return; }
+        var promises = Array.from(buttons).map(function(btn) {
+            return new Promise(function(resolve) {
+                API.guest.post('cart/remove_item',
+                    { id: btn.getAttribute('data-cart-item-id'), CSRFToken: '{{ CSRFToken }}' },
+                    resolve, resolve);
+            });
         });
+        Promise.all(promises).then(callback);
+    }
 
-        $('#show-promo-field').on('click', function (event) {
-            $('#apply-promo').show();
-            $(this).hide();
-            $('#promocode').focus();
-        });
+    function onAddToCart(result) {
+        window.location.href = '{{ "order"|link }}?checkout=1';
+    }
 
-        $('.register-login a').on('click', function (e) {
-            e.preventDefault();
-            $(this).tab('show');
-        });
+    document.addEventListener('DOMContentLoaded', function() {
+        // "Have a coupon code?" link
+        var showPromoField = document.getElementById('show-promo-field');
+        if (showPromoField) {
+            showPromoField.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.getElementById('apply-promo').style.display = '';
+                showPromoField.style.display = 'none';
+                document.getElementById('promocode').focus();
+            });
+        }
 
+        // Guard: opening Product Configuration accordion when cart has items.
+        var orderEl = document.getElementById('order');
+        if (orderEl) {
+            orderEl.addEventListener('show.bs.collapse', function(e) {
+                if (!document.querySelectorAll('.remove-cart-item').length) return;
+                e.preventDefault();
+                if (!confirm('{{ 'Your current selection will be replaced. Continue?'|trans }}')) return;
+                _clearCartThen(function() { window.location.href = window.location.pathname; });
+            });
+        }
+
+        // Guard: clicking Next in Product Configuration when cart already has an item.
+        var replacingCart = false;
+        var addToCartForm = document.querySelector('form[data-api-jsonp="onAddToCart"]');
+        if (addToCartForm) {
+            addToCartForm.addEventListener('submit', function(e) {
+                if (replacingCart) { replacingCart = false; return; } // second pass — let _apiForm handle it
+                if (!document.querySelectorAll('.remove-cart-item').length) return; // cart empty
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                if (!confirm('{{ 'Your current selection will be replaced. Continue?'|trans }}')) return;
+                var form = this;
+                _clearCartThen(function() {
+                    replacingCart = true;
+                    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                });
+            }, true); // capture phase — fires before _apiForm's bubble listener
+        }
     });
 
     function onOrderCheckout(result){
-        if (result.invoice_hash) {
-            bb.post('guest/invoice/payment', {
-            hash: result.invoice_hash,
-            gateway_id: result.gateway_id,
-            auto_redirect: true
-            }, function (r) {
-                let checkoutEl = document.getElementById('checkout');
-                let paymentHtmlEl = document.getElementById('payment-html');
-                if (r.iframe) {
-                    $('#payment-html-inner').html(r.result);
-                    bootstrap.Collapse.getOrCreateInstance(checkoutEl).hide();
-                    $('#checkout').remove();
-                    bootstrap.Collapse.getOrCreateInstance(paymentHtmlEl).show();
-                } else {
-                    var link = '{{ "invoice/banklink"|link }}' + '/' + result.invoice_hash + '/' + result.gateway_id;
-                    $('#payment-html-inner').html('<a href="' + link + '" target="_parent" id="redirect-to-gateway">Redirect to payment gateway</a>');
-                    bootstrap.Collapse.getOrCreateInstance(checkoutEl).hide();
-                    $('#checkout-inner').remove();
-                    bootstrap.Collapse.getOrCreateInstance(paymentHtmlEl).show();
-                    $('#redirect-to-gateway')[0].click();
-                }
-            });
-        } else {
-            window.top.location.href = ('{{ "order/service/manage"|link }}' + '/' + result.order_id);
-        }
+        let checkoutEl = document.getElementById('checkout');
+        let paymentHtmlEl = document.getElementById('payment-html');
+
+        // TODO: replace shim with real gateway call once Stripe is wired up:
+        //   API.guest.post('invoice/payment', { hash: result.invoice_hash,
+        //       gateway_id: result.gateway_id, auto_redirect: true }, ...)
+        _showPaymentShim(result.invoice_hash, result.gateway_id);
+        bootstrap.Collapse.getOrCreateInstance(checkoutEl).hide();
+        bootstrap.Collapse.getOrCreateInstance(paymentHtmlEl).show();
     }
 
-    function onLogin(result){
+    function _showPaymentShim(invoiceHash, gatewayId) {
+        var container = document.getElementById('payment-html-inner');
+        var canPay = !!(invoiceHash && gatewayId);
+        container.innerHTML = `
+            <div class="mb-3">
+                <label class="form-label small">Card number</label>
+                <input type="text" class="form-control form-control-sm" placeholder="1234 5678 9012 3456" autocomplete="cc-number">
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <label class="form-label small">Expiry</label>
+                    <input type="text" class="form-control form-control-sm" placeholder="MM / YY" autocomplete="cc-exp">
+                </div>
+                <div class="col-6">
+                    <label class="form-label small">CVC</label>
+                    <input type="text" class="form-control form-control-sm" placeholder="•••" autocomplete="cc-csc">
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label small">Name on card</label>
+                <input type="text" class="form-control form-control-sm" placeholder="Full name" autocomplete="cc-name">
+            </div>
+            <button class="btn btn-sm btn-primary w-100" id="pay-now-btn" ${canPay ? '' : 'disabled'}>Pay now</button>
+            <p class="text-muted small mt-2 mb-0">${canPay ? 'Test mode &mdash; use card 4242&nbsp;4242&nbsp;4242&nbsp;4242.' : 'Payment processing not yet configured.'}</p>
+        `;
+
+        if (!canPay) return;
+
+        document.getElementById('pay-now-btn').addEventListener('click', function () {
+            var btn = this;
+            btn.disabled = true;
+            btn.textContent = 'Processing\u2026';
+
+            API.guest.post('invoice/payment', {
+                hash: invoiceHash,
+                gateway_id: gatewayId,
+                auto_redirect: true
+            }, function (r) {
+                if (r && r.type === 'html') {
+                    container.innerHTML = '';
+                    container.appendChild(document.createRange().createContextualFragment(r.result));
+                } else if (r) {
+                    window.location.href = '{{ "invoice/banklink"|link }}' + '/' + invoiceHash + '/' + gatewayId;
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = 'Pay now';
+                    FOSSBilling.message('{{ "Payment failed. Please try again."|trans }}', 'error');
+                }
+            }, function () {
+                btn.disabled = false;
+                btn.textContent = 'Pay now';
+                FOSSBilling.message('{{ "Payment request failed. Please try again."|trans }}', 'error');
+            });
+        });
+    }
+
+    function _onLoginSuccess(email) {
         FOSSBilling.message("{{ 'You logged in successfully'|trans }}");
-        let registerEl = document.getElementById('register');
-        new bootstrap.Collapse('#register').hide();
-        document.querySelector("#checkoutButton").hidden = false;
-        document.querySelector("#loginMessage").hidden = true;
-        setTimeout(() => {
-            registerEl.parentElement.remove();
-            new bootstrap.Collapse('#checkout').show();
+        var registerEl = document.getElementById('register');
+        if (registerEl) {
+            var headerSpan = registerEl.previousElementSibling
+                ? registerEl.previousElementSibling.querySelector('.accordion-button span')
+                : null;
+            if (headerSpan) headerSpan.textContent = 'Logged in as ' + email;
+            new bootstrap.Collapse(registerEl).hide();
+        }
+        var checkoutBtn = document.getElementById('checkoutButton');
+        if (checkoutBtn) checkoutBtn.hidden = false;
+        var loginMsg = document.getElementById('loginMessage');
+        if (loginMsg) loginMsg.hidden = true;
+        setTimeout(function() {
+            if (registerEl && registerEl.parentElement) registerEl.parentElement.remove();
+            var checkoutEl = document.getElementById('checkout');
+            if (checkoutEl) new bootstrap.Collapse(checkoutEl).show();
         }, 500);
     }
 
-    function onAccountCreate(result){
-        //login after registration
-        var login_details = {
-            email: $('#reg-email').val(),
-            password: $('#reg-password').val()
-        };
-        bb.post(
-            'guest/client/login',
-            login_details,
-            function (result) {
-                FOSSBilling.message("{{ 'You logged in successfully'|trans }}");
-                let registerEl = document.getElementById('register');
-                new bootstrap.Collapse('#register').hide();
-                document.querySelector("#checkoutButton").hidden = false;
-                document.querySelector("#loginMessage").hidden = true;
-                setTimeout(() => {
-                    registerEl.parentElement.remove();
-                    new bootstrap.Collapse('#checkout').show();
-                    }, 500);
-            }
-        );
+    function onLogin(result) {
+        var emailEl = document.getElementById('email');
+        _onLoginSuccess(emailEl ? emailEl.value : '');
+    }
+
+    function onAccountCreate(result) {
+        var email = document.getElementById('reg-email').value;
+        var password = document.getElementById('reg-password').value;
+        API.guest.post('client/login', {
+            email: email,
+            password: password,
+            CSRFToken: '{{ CSRFToken }}'
+        }, function() {
+            _onLoginSuccess(email);
+        });
     }
 </script>
 {% endblock %}

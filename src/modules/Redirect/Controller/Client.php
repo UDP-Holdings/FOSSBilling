@@ -39,6 +39,11 @@ class Client implements \FOSSBilling\InjectionAwareInterface
         $app->get('/contact-us', 'get_contact_us', [], '\\' . \Box\Mod\Support\Controller\Client::class);
         $app->get('/contact-us/conversation/:hash', 'get_contact_us_conversation', ['hash' => '[a-z0-9]+'], '\\' . \Box\Mod\Support\Controller\Client::class);
 
+        // UDP clean URL aliases
+        $app->get('/logout', 'get_client_logout', [], '\\' . \Box\Mod\Client\Controller\Client::class);
+        $app->get('/user/manage', 'get_client_index', [], '\\' . \Box\Mod\Client\Controller\Client::class);
+        $app->get('/user/manage/:page', 'get_client_page', ['page' => '[a-z0-9-]+'], '\\' . \Box\Mod\Client\Controller\Client::class);
+
         $service = $this->di['mod_service']('redirect');
         $redirects = $service->getRedirects();
         foreach ($redirects as $redirect) {

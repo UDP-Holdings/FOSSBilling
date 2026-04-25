@@ -16,6 +16,19 @@ web_environment:
     - APP_ENV=dev
 corepack_enable: false
 
+hooks:
+  post-start:
+    - exec-host: |
+        TABLE=$(ddev exec mysql -h db -u root -proot --skip-column-names -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='fossbilling' AND table_name='admin';" 2>/dev/null | tr -d '[:space:]' || echo 0)
+        if [ "$TABLE" -eq 0 ]; then
+          echo "DB is empty — creating fossbilling database and importing seed..."
+          ddev exec mysql -h db -u root -proot -e "CREATE DATABASE IF NOT EXISTS fossbilling CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+          ddev import-db --database=fossbilling --file=.ddev/fossbilling-seed.sql.gz
+          echo "Seed imported."
+        else
+          echo "DB already populated — skipping seed import."
+        fi
+
 # Key features of DDEV's config.yaml:
 
 # name: <projectname> # Name of the project, automatically provides
