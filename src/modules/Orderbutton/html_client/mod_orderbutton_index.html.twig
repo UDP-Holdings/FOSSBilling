@@ -120,71 +120,20 @@
     });
 
     function onOrderCheckout(result){
-        let checkoutEl = document.getElementById('checkout');
-        let paymentHtmlEl = document.getElementById('payment-html');
-
-        // TODO: replace shim with real gateway call once Stripe is wired up:
-        //   API.guest.post('invoice/payment', { hash: result.invoice_hash,
-        //       gateway_id: result.gateway_id, auto_redirect: true }, ...)
-        _showPaymentShim(result.invoice_hash, result.gateway_id);
-        bootstrap.Collapse.getOrCreateInstance(checkoutEl).hide();
-        bootstrap.Collapse.getOrCreateInstance(paymentHtmlEl).show();
-    }
-
-    function _showPaymentShim(invoiceHash, gatewayId) {
+        if (result.invoice_hash && result.gateway_id) {
+            window.location.href = '{{ "invoice/banklink"|link }}' + '/' + result.invoice_hash + '/' + result.gateway_id;
+            return;
+        }
+        // No gateway configured (dev / free order): show in-page confirmation.
         var container = document.getElementById('payment-html-inner');
-        var canPay = !!(invoiceHash && gatewayId);
         container.innerHTML = `
-            <div class="mb-3">
-                <label class="form-label small">Card number</label>
-                <input type="text" class="form-control form-control-sm" placeholder="1234 5678 9012 3456" autocomplete="cc-number">
+            <div class="text-center py-3">
+                <p class="fw-semibold mb-1">Order received!</p>
+                <p class="text-muted small mb-0">We'll follow up by email with next steps.</p>
             </div>
-            <div class="row g-2 mb-3">
-                <div class="col-6">
-                    <label class="form-label small">Expiry</label>
-                    <input type="text" class="form-control form-control-sm" placeholder="MM / YY" autocomplete="cc-exp">
-                </div>
-                <div class="col-6">
-                    <label class="form-label small">CVC</label>
-                    <input type="text" class="form-control form-control-sm" placeholder="•••" autocomplete="cc-csc">
-                </div>
-            </div>
-            <div class="mb-3">
-                <label class="form-label small">Name on card</label>
-                <input type="text" class="form-control form-control-sm" placeholder="Full name" autocomplete="cc-name">
-            </div>
-            <button class="btn btn-sm btn-primary w-100" id="pay-now-btn" ${canPay ? '' : 'disabled'}>Pay now</button>
-            <p class="text-muted small mt-2 mb-0">${canPay ? 'Test mode &mdash; use card 4242&nbsp;4242&nbsp;4242&nbsp;4242.' : 'Payment processing not yet configured.'}</p>
         `;
-
-        if (!canPay) return;
-
-        document.getElementById('pay-now-btn').addEventListener('click', function () {
-            var btn = this;
-            btn.disabled = true;
-            btn.textContent = 'Processing\u2026';
-
-            API.guest.post('invoice/payment', {
-                hash: invoiceHash,
-                gateway_id: gatewayId,
-                auto_redirect: true
-            }, function (r) {
-                if (r && r.type === 'html') {
-                    container.innerHTML = '';
-                    container.appendChild(document.createRange().createContextualFragment(r.result));
-                } else if (r) {
-                    window.location.href = '{{ "invoice/banklink"|link }}' + '/' + invoiceHash + '/' + gatewayId;
-                } else {
-                    btn.disabled = false;
-                    btn.textContent = 'Pay now';
-                    FOSSBilling.message('{{ "Payment failed. Please try again."|trans }}', 'error');
-                }
-            }, function () {
-                btn.disabled = false;
-                btn.textContent = 'Pay now';
-                FOSSBilling.message('{{ "Payment request failed. Please try again."|trans }}', 'error');
-            });
-        });
+        bootstrap.Collapse.getOrCreateInstance(document.getElementById('checkout')).hide();
+        bootstrap.Collapse.getOrCreateInstance(document.getElementById('payment-html')).show();
     }
 
     function _onLoginSuccess(email) {
