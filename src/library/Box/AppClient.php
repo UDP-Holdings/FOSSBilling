@@ -46,9 +46,13 @@ class Box_AppClient extends Box_App
         }
     }
 
-    public function get_index(): string
+    public function get_index(): never
     {
-        return $this->render('mod_index_dashboard');
+        if ($this->di['auth']->isClientLoggedIn()) {
+            $this->redirect('/order/service');
+        } else {
+            $this->redirect('/login');
+        }
     }
 
     public function get_custom_page($page): string

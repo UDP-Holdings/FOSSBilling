@@ -1,23 +1,8 @@
 {{ product_details }}
 
-<h4 class="mt-4 mb-1"><strong>{{ 'Your Instance'|trans }}</strong></h4>
+<input type="hidden" name="domain_type" value="subdomain">
 
-<div class="mb-3">
-    <div class="form-check">
-        <input class="form-check-input" type="radio" name="domain_type" id="domain_type_subdomain"
-               value="subdomain" checked>
-        <label class="form-check-label" for="domain_type_subdomain">
-            {{ 'Use a udp.social subdomain'|trans }}
-        </label>
-    </div>
-    <div class="form-check">
-        <input class="form-check-input" type="radio" name="domain_type" id="domain_type_byod"
-               value="byod">
-        <label class="form-check-label" for="domain_type_byod">
-            {{ 'Use my own domain'|trans }}
-        </label>
-    </div>
-</div>
+<h4 class="mt-4 mb-1"><strong>{{ 'Your Instance'|trans }}</strong></h4>
 
 {# Subdomain picker #}
 <div id="udp-subdomain-section" class="mb-3">
@@ -48,31 +33,27 @@
     <div class="form-text">{{ 'Used to log in to your Friendica instance.'|trans }}</div>
 </div>
 
-{# BYOD input #}
-<div id="udp-byod-section" class="mb-3" style="display:none;">
-    <label class="form-label" for="udp-custom-domain">{{ 'Your domain'|trans }}</label>
-    <input type="text" class="form-control" id="udp-custom-domain" name="custom_domain"
-           placeholder="myfamily.example.com" style="max-width: 360px;"
-           autocomplete="off" spellcheck="false">
-    <div class="form-text">
-        {{ 'Point your domain\'s DNS A record to your instance IP after setup. We\'ll send instructions.'|trans }}
-    </div>
+{# Network name — derived from subdomain, editable #}
+<div class="mb-3">
+    <label class="form-label" for="udp-network-name">{{ 'Community name'|trans }}</label>
+    <input type="text" class="form-control" id="udp-network-name"
+           name="network_name" placeholder="Smith Family"
+           style="max-width: 320px;" autocomplete="off" spellcheck="false" required>
+    <div class="form-text">{{ 'The display name for your Friendica community.'|trans }}</div>
 </div>
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    const subdomainSection = document.getElementById('udp-subdomain-section');
-    const byodSection      = document.getElementById('udp-byod-section');
-    const subdomainInput   = document.getElementById('udp-subdomain-input');
-    const domainSelect     = document.getElementById('udp-domain-select');
-    const checkBtn         = document.getElementById('udp-check-btn');
-    const feedback         = document.getElementById('udp-subdomain-feedback');
-    const nextBtn          = document.getElementById('config-next');
-    const domainTypeInputs = document.querySelectorAll('input[name="domain_type"]');
+    const subdomainInput  = document.getElementById('udp-subdomain-input');
+    const domainSelect    = document.getElementById('udp-domain-select');
+    const checkBtn        = document.getElementById('udp-check-btn');
+    const feedback        = document.getElementById('udp-subdomain-feedback');
+    const networkNameInput = document.getElementById('udp-network-name');
+    const nextBtn         = document.getElementById('config-next');
 
-    // The update-service addon ID is embedded server-side so JS can reference it.
-    // Set to null if not applicable (L1 has no addon).
-    const updateAddonId = {{ update_addon_id is defined ? update_addon_id : 'null' }};
+    function humanizeSubdomain(s) {
+        return s.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    }
 
     let subdomainConfirmed = false;
 
@@ -88,44 +69,10 @@ document.addEventListener('DOMContentLoaded', function () {
         feedback.textContent = '';
         feedback.className = 'form-text mt-1';
         setNextEnabled(false);
-    }
-
-    function onDomainTypeChange() {
-        const type = document.querySelector('input[name="domain_type"]:checked').value;
-
-        if (type === 'subdomain') {
-            subdomainSection.style.display = '';
-            byodSection.style.display = 'none';
-            // Disable BYOD field so it isn't submitted
-            document.getElementById('udp-custom-domain').disabled = true;
-            subdomainInput.disabled = false;
-            setNextEnabled(subdomainConfirmed);
-            lockAddon(true);
-        } else {
-            subdomainSection.style.display = 'none';
-            byodSection.style.display = '';
-            document.getElementById('udp-custom-domain').disabled = false;
-            subdomainInput.disabled = true;
-            setNextEnabled(true);
-            lockAddon(false);
-        }
-    }
-
-    // Lock or unlock the update-service addon based on subdomain requirement.
-    function lockAddon(required) {
-        if (!updateAddonId) return;
-        const addBtn     = document.getElementById('addon_' + updateAddonId);
-        const declineBtn = document.getElementById('addon_' + updateAddonId + '_decline');
-        if (!addBtn || !declineBtn) return;
-
-        if (required) {
-            addBtn.checked = true;
-            declineBtn.disabled = true;
-            declineBtn.closest('label').setAttribute('title',
-                '{{ 'Required for udp.social subdomains'|trans }}');
-        } else {
-            declineBtn.disabled = false;
-            declineBtn.closest('label').removeAttribute('title');
+        // Auto-populate network name from subdomain if the user hasn't touched it yet.
+        const label = subdomainInput.value.trim().toLowerCase();
+        if (label && !networkNameInput.dataset.userEdited) {
+            networkNameInput.value = humanizeSubdomain(label);
         }
     }
 
@@ -170,9 +117,11 @@ document.addEventListener('DOMContentLoaded', function () {
         );
     }
 
-    // Wire up events
-    checkBtn.addEventListener('click', checkAvailability);
+    networkNameInput.addEventListener('input', () => {
+        networkNameInput.dataset.userEdited = '1';
+    });
 
+    checkBtn.addEventListener('click', checkAvailability);
     subdomainInput.addEventListener('input', resetSubdomainState);
     domainSelect.addEventListener('change', resetSubdomainState);
     subdomainInput.addEventListener('keydown', function (e) {
@@ -182,12 +131,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    domainTypeInputs.forEach(function (input) {
-        input.addEventListener('change', onDomainTypeChange);
-    });
-
-    // Initial state: subdomain selected, Next disabled until check passes
+    // Next disabled until subdomain check passes
     nextBtn.disabled = true;
-    lockAddon(true);
 });
 </script>

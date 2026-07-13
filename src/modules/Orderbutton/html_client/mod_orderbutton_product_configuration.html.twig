@@ -1,5 +1,5 @@
 {% if not product %}
-    {% set product = request.product ? guest.product_get({"id":request.product}) : null %}
+    {% set product = request.product ? guest.product_get({"id":request.product}) : guest.product_get({"slug":"managed-friendica"}) %}
 {% endif %}
 <div class="accordion-item">
     <h2 class="accordion-header">
@@ -8,11 +8,10 @@
             {{ 'Product Configuration'|trans }}
         </button>
     </h2>
-    {% if product %}
     <div id="order" class="accordion-collapse collapse {% if product %}show{%endif%}" data-bs-parent="#orderManager">
         <div class="accordion-body">
             <div class="accordion-inner">
-                <form method="post" style="background:none;" class="api-form form-{{ product.form_id ? guest.formbuilder_get( {"id":product.form_id}).style.type : 0 }}"
+            <form method="post" style="background:none;" class="api-form form-{{ product.form_id ? guest.formbuilder_get( {"id":product.form_id}).style.type : 0 }}"
                     action="{{ 'api/guest/cart/add_item'|link }}"
                     data-api-jsonp="onAddToCart">
                     <input type="hidden" name="CSRFToken" value="{{ CSRFToken }}"/>
@@ -40,7 +39,7 @@
                                     {% set periods = guest.system_periods %}
                                     <select class="form-select" name="period" id="period-selector">
                                         {% for code,prices in product.pricing.recurrent %}
-                                            {% if prices.enabled %}
+                                            {% if prices.enabled and prices.price > 0 %}
                                                 <option value="{{code}}" data-bb-price="{{ prices.price | money_convert }}" name="period">{{ prices.price | money_convert }} ({{ periods[code] }})</option>
                                             {% endif %}
                                         {% endfor %}
@@ -89,5 +88,4 @@
             </div>
         </div>
     </div>
-    {% endif %}
 </div>
