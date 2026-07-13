@@ -155,6 +155,17 @@ return [
         'cache' => __DIR__ . '/data/cache',
     ],
 
+    /*
+     * UDP Social — WordPress bridge settings.
+     * wordpress_url: base URL of the WordPress site (blog.udp.social in prod).
+     * billing_secret: shared HMAC-SHA256 secret; must match UDP_BILLING_SECRET in wp-config.php.
+     * Leave wordpress_url empty to disable WP delegation (useful for standalone dev/test).
+     */
+    'udp' => [
+        'wordpress_url'  => '',
+        'billing_secret' => '',
+    ],
+
     'api' => [
         // All requests made to the API must have referrer request header with the same URL as the FOSSBilling installation
         'require_referrer_header' => false,
