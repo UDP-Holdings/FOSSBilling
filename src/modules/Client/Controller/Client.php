@@ -27,6 +27,7 @@ class Client implements \FOSSBilling\InjectionAwareInterface
 
     public function register(\Box_App &$app)
     {
+        $app->get('/checkout', 'get_checkout', [], static::class);
         $app->get('/client/reset-password-confirm/:hash', 'get_reset_password_confirm', ['hash' => '[a-z0-9]+'], static::class);
         $app->get('/client', 'get_client_index', [], static::class);
         $app->get('/client/logout', 'get_client_logout', [], static::class);
@@ -55,6 +56,47 @@ class Client implements \FOSSBilling\InjectionAwareInterface
         $api = $this->di['api_client'];
         $api->profile_logout();
         $app->redirect('/');
+    }
+
+    /**
+     * WordPress → FOSSBilling SSO handoff.
+     *
+     * Validates the signed wp_token issued by udp-billing-bridge.php, then
+     * finds or auto-creates the FOSSBilling client record and establishes a
+     * session. The optional ?plan= param is a product slug; if present the
+     * customer is sent directly to that product's order page.
+     */
+    public function get_checkout(\Box_App $app): never
+    {
+        $token = $_GET['wp_token'] ?? '';
+        $plan  = preg_replace('/[^a-z0-9-]/', '', strtolower($_GET['plan']  ?? ''));
+        $promo = preg_replace('/[^A-Z0-9_]/', '', strtoupper($_GET['promo'] ?? ''));
+
+        if (!$token) {
+            $app->redirect('/login');
+        }
+
+        $service = $this->di['mod_service']('Client');
+
+        try {
+            $client = $service->loginClientFromWpToken($token);
+        } catch (\Exception $e) {
+            $this->di['mod_service']('System')->setPendingMessage($e->getMessage());
+            $app->redirect('/login');
+        }
+
+        $oldSession = $this->di['session']->getId();
+        session_regenerate_id();
+        $this->di['session']->set('client_id', $client->id);
+        $this->di['mod_service']('cart')->transferFromOtherSession($oldSession);
+
+        $this->di['logger']->info('Client #%s logged in via WP token', $client->id);
+
+        $redirect = $plan ? '/order/' . $plan : '/order';
+        if ($promo !== '') {
+            $redirect .= '?promocode=' . urlencode($promo);
+        }
+        $app->redirect($redirect);
     }
 
     public function get_client_page(\Box_App $app, $page)

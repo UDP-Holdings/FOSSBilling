@@ -53,6 +53,12 @@ class Guest extends \Api_Abstract
      */
     public function create($data = [])
     {
+        // When the WP bridge is active, all client accounts are provisioned via
+        // the SSO handoff (/checkout?wp_token=...). Direct registration is blocked.
+        if (\FOSSBilling\Config::getProperty('udp.wordpress_url', '')) {
+            throw new \FOSSBilling\InformationException('Please register at blog.udp.social and use the "Get Your Instance" link.');
+        }
+
         $config = $this->di['mod_config']('client');
 
         if (isset($config['disable_signup']) && $config['disable_signup']) {
