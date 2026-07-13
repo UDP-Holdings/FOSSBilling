@@ -183,6 +183,18 @@ tests-legacy/                  # Legacy PHPUnit tests
 * **`src/config-sample.php`:** Sample application configuration file
 * **`src/di.php`:** Dependency injection container setup
 
+## UDP Social Deployment Notes
+
+These notes apply to the live deployment at `billing.udp.social` on the IONOS udp.social box.
+
+**PHP version skew:** DDEV runs PHP 8.2; the live server runs PHP 8.4 FPM (`php8.4-fpm-fossbilling`). FOSSBilling 0.7.2 is compatible with both, but behavior differences are possible. If something works locally but breaks on live, PHP version is the first suspect.
+
+**SSOwat:** `billing.udp.social` is served through YunoHost's nginx config, which includes `access_by_lua_file /usr/share/ssowat/access.lua` on every request. The FOSSBilling app **must be set to public access** in the YunoHost admin panel (`https://udp.social/yunohost/admin/#/apps`), otherwise SSOwat will gate the billing portal behind a YunoHost login prompt — breaking the customer signup flow entirely.
+
+**Deploy:** Use `deploy.sh` from the local dev machine (WSL). It rsyncs changed files (diff from `0.7.2` tag) to `/var/www/fossbilling` over SSH, fixes ownership, and clears the cache via `console.php cache:clear`. Run with `--dry-run` first to review the file list.
+
+**Cron:** Added to root's crontab on 2026-05-13 (`*/5 * * * * php /var/www/fossbilling/cron.php`). Runs as root rather than www-data — watch for permission issues on cron-created files in `data/log/`.
+
 ## Additional Resources
 
 * **Documentation:** [fossbilling.org/docs](https://fossbilling.org/docs)
